@@ -4,10 +4,14 @@ const { v4: uuidv4 } = require("uuid");
 const PatchManager = require("./PatchManager");
 const { SyncStateRemote } = require("@syncstate/remote-server");
 const remote = new SyncStateRemote();
-const app = express();
-const server = app.listen(8000, function () {
-  console.log("listening on port 8000");
-});
+
+const PORT = process.env.PORT || 8000;
+const INDEX = '/index.html';
+
+const server = express()
+  .use((req, res) => res.sendFile(INDEX, { root: __dirname }))
+  .listen(PORT, () => console.log(`Listening on ${PORT}`));
+  
 var activeUserCount = 0;
 
 const io = socket(server, {
@@ -15,11 +19,28 @@ const io = socket(server, {
     origin: "*",
   },
 });
+
 const projectId = uuidv4(); //generate unique id
 
 let patchManager = new PatchManager();
 
+
 io.on("connection", function (socket) {
+
+    // Count active clients
+    activeUserCount++;
+
+    socket.emit("counter", { activeUserCount: activeUserCount });
+  
+    // /* Disconnect socket */
+    socket.on("disconnect", function () {
+      activeUserCount--;
+      socket.emit("counter", { activeUserCount: activeUserCount });
+    });
+  
+    setInterval(() => socket.emit('counter', { activeUserCount: activeUserCount }), 1000);
+  
+
   socket.on("fetchDoc", (path) => {
     //get all patches
     const patchesList = patchManager.getAllPatches(projectId, path);
@@ -30,17 +51,6 @@ io.on("connection", function (socket) {
         socket.emit("change", path, change);
       });
     }
-  });
-
-  // Count active clients
-  activeUserCount++;
-
-  socket.emit("counter", { activeUserCount: activeUserCount });
-
-  // /* Disconnect socket */
-  socket.on("disconnect", function () {
-    activeUserCount--;
-    socket.emit("counter", { activeUserCount: activeUserCount });
   });
   
   //patches recieved from the client
